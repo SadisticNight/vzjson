@@ -23,9 +23,9 @@ use std::path::Path;
 
 pub const VZJSON_VERSION_MAJOR: u32 = 1;
 pub const VZJSON_VERSION_MINOR: u32 = 0;
-pub const VZJSON_VERSION_PATCH: u32 = 0;
-pub const VZJSON_VERSION_HEX: u32 = 0x010000;
-pub const VZJSON_VERSION_STRING: &str = "1.0.0";
+pub const VZJSON_VERSION_PATCH: u32 = 1;
+pub const VZJSON_VERSION_HEX: u32 = 0x010001;
+pub const VZJSON_VERSION_STRING: &str = "1.0.1";
 
 pub const fn vzjson_version() -> u32 {
     VZJSON_VERSION_HEX
