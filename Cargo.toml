@@ -4,6 +4,7 @@ version = "0.13.0"
 edition = "2021"
 authors = ["Luis Morinigo"]
 license = "MIT"
+repository = "https://github.com/SadisticNight/vzjson"
 readme = "README.md"
 description = "High-performance pure-Rust JSON library inspired by yyjson 0.13.0 (#![forbid(unsafe_code)])"
 keywords = ["json", "parser", "serializer", "swar", "yyjson"]
