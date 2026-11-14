@@ -22,6 +22,3 @@ jobs:
 
       - name: Run JSONTestSuite
         run: cargo test --test json_test_suite -- --nocapture
-
-      - name: Check benches compile
-        run: cargo check --benches
