@@ -1,0 +1,29 @@
+[package]
+name = "vzjson"
+version = "0.13.0"
+edition = "2021"
+authors = ["Luis Morinigo"]
+license = "MIT"
+readme = "README.md"
+description = "High-performance pure-Rust JSON library inspired by yyjson 0.13.0 (#![forbid(unsafe_code)])"
+keywords = ["json", "parser", "serializer", "swar", "yyjson"]
+categories = ["encoding", "parser-implementations"]
+exclude = ["tests/JSONTestSuite/**"]
+
+[lib]
+name = "vzjson"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "json_bench"
+harness = false
+
+[profile.release]
+opt-level = 3          # Máxima optimización
+lto = "fat"            # Optimización entre crates
+codegen-units = 1      # Favorecer optimización sobre velocidad de compilación
+panic = "abort"        # Abortar sin desenrollar la pila
+strip = true           # Eliminar símbolos
+overflow-checks = false
