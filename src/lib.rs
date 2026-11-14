@@ -2311,9 +2311,10 @@ impl<'a> Reader<'a> {
         let ext_ws = self.flags.contains(ReadFlags::ALLOW_EXT_WHITESPACE);
         let comments = self.flags.contains(ReadFlags::ALLOW_COMMENTS);
         loop {
-            while self.pos + 8 <= self.src().len() {
-                let s = self.src();
-                let p = self.pos;
+            let s = self.src();
+            let len = s.len();
+            let mut p = self.pos;
+            while p + 8 <= len {
                 let chunk = u64::from_le_bytes([
                     s[p], s[p + 1], s[p + 2], s[p + 3],
                     s[p + 4], s[p + 5], s[p + 6], s[p + 7],
@@ -2321,12 +2322,13 @@ impl<'a> Reader<'a> {
                 if chunk != 0x2020_2020_2020_2020 {
                     break;
                 }
-                self.pos += 8;
+                p += 8;
             }
-            while self.pos < self.src().len() && is_ws_std(self.src()[self.pos]) {
-                self.pos += 1;
+            while p < len && is_ws_std(s[p]) {
+                p += 1;
             }
-            if self.pos >= self.src().len() {
+            self.pos = p;
+            if p >= len {
                 return Ok(());
             }
             let b = self.src()[self.pos];
@@ -3703,24 +3705,49 @@ fn write_u64(mut val: u64, out: &mut Vec<u8>) {
         out.push(b'0' + val as u8);
         return;
     }
+    if val < 100 {
+        let r = (val as usize) * 2;
+        out.extend_from_slice(&DIGIT_PAIRS[r..r + 2]);
+        return;
+    }
     let mut tmp = [0u8; 20];
     let mut pos = 20;
-    while val >= 100 {
-        let q = val / 100;
-        let r = ((val % 100) as usize) * 2;
+    while val >= 10_000 {
+        let q = val / 10_000;
+        let r = (val % 10_000) as usize;
         val = q;
-        pos -= 2;
-        tmp[pos] = DIGIT_PAIRS[r];
-        tmp[pos + 1] = DIGIT_PAIRS[r + 1];
+        let hi = (r / 100) * 2;
+        let lo = (r % 100) * 2;
+        pos -= 4;
+        tmp[pos] = DIGIT_PAIRS[hi];
+        tmp[pos + 1] = DIGIT_PAIRS[hi + 1];
+        tmp[pos + 2] = DIGIT_PAIRS[lo];
+        tmp[pos + 3] = DIGIT_PAIRS[lo + 1];
     }
-    if val >= 10 {
-        let r = (val as usize) * 2;
+    let rem = val as usize;
+    if rem >= 1000 {
+        let hi = (rem / 100) * 2;
+        let lo = (rem % 100) * 2;
+        pos -= 4;
+        tmp[pos] = DIGIT_PAIRS[hi];
+        tmp[pos + 1] = DIGIT_PAIRS[hi + 1];
+        tmp[pos + 2] = DIGIT_PAIRS[lo];
+        tmp[pos + 3] = DIGIT_PAIRS[lo + 1];
+    } else if rem >= 100 {
+        let hi = rem / 100;
+        let lo = (rem % 100) * 2;
+        pos -= 3;
+        tmp[pos] = b'0' + hi as u8;
+        tmp[pos + 1] = DIGIT_PAIRS[lo];
+        tmp[pos + 2] = DIGIT_PAIRS[lo + 1];
+    } else if rem >= 10 {
+        let r = rem * 2;
         pos -= 2;
         tmp[pos] = DIGIT_PAIRS[r];
         tmp[pos + 1] = DIGIT_PAIRS[r + 1];
     } else {
         pos -= 1;
-        tmp[pos] = b'0' + val as u8;
+        tmp[pos] = b'0' + rem as u8;
     }
     out.extend_from_slice(&tmp[pos..]);
 }
@@ -4841,6 +4868,53 @@ fn write_val_to_vec(root: &ValRef<'_>, flags: WriteFlags) -> Result<Vec<u8>, Wri
     Ok(out)
 }
 
+#[inline(always)]
+fn write_primitive_val(
+    val: ValRef<'_>,
+    flags: WriteFlags,
+    out: &mut Vec<u8>,
+) -> Result<bool, WriteError> {
+    match val.get_type() {
+        Type::None => Err(WriteError::new(
+            WriteErrorCode::InvalidValueType,
+            "invalid value type: none",
+        )),
+        Type::Null => {
+            out.extend_from_slice(b"null");
+            Ok(true)
+        }
+        Type::Bool => {
+            if val.is_true() {
+                out.extend_from_slice(b"true");
+            } else {
+                out.extend_from_slice(b"false");
+            }
+            Ok(true)
+        }
+        Type::Raw => {
+            out.extend_from_slice(val.str_slice());
+            Ok(true)
+        }
+        Type::Num => {
+            let v = val.val();
+            if v.is_uint() {
+                write_u64(v.uni, out);
+            } else if v.is_sint() {
+                write_i64(v.uni as i64, out);
+            } else {
+                write_f64(f64::from_bits(v.uni), flags, out)?;
+            }
+            Ok(true)
+        }
+        Type::Str => {
+            let is_noesc = (val.val().tag as u8) == TAG_STR_NOESC as u8;
+            write_string(val.str_slice(), is_noesc, flags, out)?;
+            Ok(true)
+        }
+        Type::Arr | Type::Obj => Ok(false),
+    }
+}
+
 fn write_val_rec(
     val: ValRef<'_>,
     flags: WriteFlags,
@@ -4851,36 +4925,10 @@ fn write_val_rec(
     if depth > MAX_WRITE_DEPTH {
         return Err(WriteError::new(WriteErrorCode::Depth, "write depth limit exceeded"));
     }
+    if write_primitive_val(val, flags, out)? {
+        return Ok(());
+    }
     match val.get_type() {
-        Type::None => {
-            return Err(WriteError::new(
-                WriteErrorCode::InvalidValueType,
-                "invalid value type: none",
-            ));
-        }
-        Type::Null => out.extend_from_slice(b"null"),
-        Type::Bool => {
-            if val.is_true() {
-                out.extend_from_slice(b"true");
-            } else {
-                out.extend_from_slice(b"false");
-            }
-        }
-        Type::Raw => out.extend_from_slice(val.str_slice()),
-        Type::Num => {
-            let v = val.val();
-            if v.is_uint() {
-                write_u64(v.uni, out);
-            } else if v.is_sint() {
-                write_i64(v.uni as i64, out);
-            } else {
-                write_f64(f64::from_bits(v.uni), flags, out)?;
-            }
-        }
-        Type::Str => {
-            let is_noesc = (val.val().tag as u8) == TAG_STR_NOESC as u8;
-            write_string(val.str_slice(), is_noesc, flags, out)?;
-        }
         Type::Arr => {
             out.push(b'[');
             let len = val.len();
@@ -4890,7 +4938,9 @@ fn write_val_rec(
                     if indent.pretty {
                         indent.write_indent(depth + 1, out);
                     }
-                    write_val_rec(child, flags, indent, depth + 1, out)?;
+                    if !write_primitive_val(child, flags, out)? {
+                        write_val_rec(child, flags, indent, depth + 1, out)?;
+                    }
                     if i + 1 < len || trailing {
                         out.push(b',');
                     }
@@ -4916,7 +4966,9 @@ fn write_val_rec(
                     if indent.pretty {
                         out.push(b' ');
                     }
-                    write_val_rec(v, flags, indent, depth + 1, out)?;
+                    if !write_primitive_val(v, flags, out)? {
+                        write_val_rec(v, flags, indent, depth + 1, out)?;
+                    }
                     if i + 1 < len || trailing {
                         out.push(b',');
                     }
@@ -4927,6 +4979,7 @@ fn write_val_rec(
             }
             out.push(b'}');
         }
+        _ => {}
     }
     Ok(())
 }
