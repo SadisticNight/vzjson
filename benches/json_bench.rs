@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use vzjson::{Doc, ReadFlags, WriteFlags};
 
 fn make_dense_numbers_json(count: usize) -> Vec<u8> {
@@ -70,68 +70,79 @@ fn make_pretty_json(records: usize) -> Vec<u8> {
     doc.write(WriteFlags::PRETTY).unwrap().into_bytes()
 }
 
-fn bench_vzjson(c: &mut Criterion) {
+fn bench_vzjson_vs_serde(c: &mut Criterion) {
     let dense_numbers = make_dense_numbers_json(20_000);
     let long_strings = make_strings_json(1000, 256);
     let numbers_json = make_numbers_json(5000);
     let mixed_json = make_mixed_json(1000);
     let pretty_json = make_pretty_json(400);
 
-    let dense_doc = Doc::read(&dense_numbers, ReadFlags::NOFLAG).unwrap();
-    let strings_doc = Doc::read(&long_strings, ReadFlags::NOFLAG).unwrap();
-    let mixed_doc = Doc::read(&mixed_json, ReadFlags::NOFLAG).unwrap();
+    let read_cases: [(&str, &[u8]); 5] = [
+        ("dense_numbers_20k", &dense_numbers),
+        ("long_strings_1000x256", &long_strings),
+        ("numbers_5000", &numbers_json),
+        ("mixed_1000_records", &mixed_json),
+        ("pretty_400_records", &pretty_json),
+    ];
 
-    let mut group = c.benchmark_group("vzjson_read");
-    group.throughput(Throughput::Bytes(dense_numbers.len() as u64));
-    group.bench_function("dense_numbers_20k", |b| {
-        b.iter(|| Doc::read(black_box(&dense_numbers), ReadFlags::NOFLAG).unwrap())
-    });
+    let mut read_group = c.benchmark_group("read");
+    for (name, data) in read_cases {
+        read_group.throughput(Throughput::Bytes(data.len() as u64));
+        read_group.bench_with_input(BenchmarkId::new("vzjson", name), data, |b, input| {
+            b.iter(|| Doc::read(black_box(input), ReadFlags::NOFLAG).unwrap())
+        });
+        read_group.bench_with_input(BenchmarkId::new("serde_json_value", name), data, |b, input| {
+            b.iter(|| serde_json::from_slice::<serde_json::Value>(black_box(input)).unwrap())
+        });
+    }
+    read_group.finish();
 
-    group.throughput(Throughput::Bytes(long_strings.len() as u64));
-    group.bench_function("long_strings_1000x256", |b| {
-        b.iter(|| Doc::read(black_box(&long_strings), ReadFlags::NOFLAG).unwrap())
-    });
+    let dense_vz = Doc::read(&dense_numbers, ReadFlags::NOFLAG).unwrap();
+    let strings_vz = Doc::read(&long_strings, ReadFlags::NOFLAG).unwrap();
+    let mixed_vz = Doc::read(&mixed_json, ReadFlags::NOFLAG).unwrap();
+    let pretty_vz = Doc::read(&pretty_json, ReadFlags::NOFLAG).unwrap();
 
-    group.throughput(Throughput::Bytes(numbers_json.len() as u64));
-    group.bench_function("numbers_5000", |b| {
-        b.iter(|| Doc::read(black_box(&numbers_json), ReadFlags::NOFLAG).unwrap())
-    });
+    let dense_serde: serde_json::Value = serde_json::from_slice(&dense_numbers).unwrap();
+    let strings_serde: serde_json::Value = serde_json::from_slice(&long_strings).unwrap();
+    let mixed_serde: serde_json::Value = serde_json::from_slice(&mixed_json).unwrap();
+    let pretty_serde: serde_json::Value = serde_json::from_slice(&pretty_json).unwrap();
 
-    group.throughput(Throughput::Bytes(mixed_json.len() as u64));
-    group.bench_function("mixed_1000_records", |b| {
-        b.iter(|| Doc::read(black_box(&mixed_json), ReadFlags::NOFLAG).unwrap())
-    });
+    let mut write_group = c.benchmark_group("write");
 
-    group.throughput(Throughput::Bytes(pretty_json.len() as u64));
-    group.bench_function("pretty_400_records", |b| {
-        b.iter(|| Doc::read(black_box(&pretty_json), ReadFlags::NOFLAG).unwrap())
-    });
-    group.finish();
-
-    let mut write_group = c.benchmark_group("vzjson_write");
     write_group.throughput(Throughput::Bytes(dense_numbers.len() as u64));
-    write_group.bench_function("dense_numbers_20k", |b| {
-        b.iter(|| black_box(&dense_doc).write(WriteFlags::NOFLAG).unwrap())
+    write_group.bench_function(BenchmarkId::new("vzjson", "dense_numbers_20k"), |b| {
+        b.iter(|| black_box(&dense_vz).write(WriteFlags::NOFLAG).unwrap())
+    });
+    write_group.bench_function(BenchmarkId::new("serde_json_value", "dense_numbers_20k"), |b| {
+        b.iter(|| serde_json::to_vec(black_box(&dense_serde)).unwrap())
     });
 
     write_group.throughput(Throughput::Bytes(long_strings.len() as u64));
-    write_group.bench_function("long_strings_1000x256", |b| {
-        b.iter(|| black_box(&strings_doc).write(WriteFlags::NOFLAG).unwrap())
+    write_group.bench_function(BenchmarkId::new("vzjson", "long_strings_1000x256"), |b| {
+        b.iter(|| black_box(&strings_vz).write(WriteFlags::NOFLAG).unwrap())
+    });
+    write_group.bench_function(BenchmarkId::new("serde_json_value", "long_strings_1000x256"), |b| {
+        b.iter(|| serde_json::to_vec(black_box(&strings_serde)).unwrap())
     });
 
     write_group.throughput(Throughput::Bytes(mixed_json.len() as u64));
-    write_group.bench_function("mixed_1000_records", |b| {
-        b.iter(|| black_box(&mixed_doc).write(WriteFlags::NOFLAG).unwrap())
+    write_group.bench_function(BenchmarkId::new("vzjson", "mixed_1000_records"), |b| {
+        b.iter(|| black_box(&mixed_vz).write(WriteFlags::NOFLAG).unwrap())
     });
-
-    let pretty_doc = Doc::read(&pretty_json, ReadFlags::NOFLAG).unwrap();
+    write_group.bench_function(BenchmarkId::new("serde_json_value", "mixed_1000_records"), |b| {
+        b.iter(|| serde_json::to_vec(black_box(&mixed_serde)).unwrap())
+    });
 
     write_group.throughput(Throughput::Bytes(pretty_json.len() as u64));
-    write_group.bench_function("mixed_400_pretty", |b| {
-        b.iter(|| black_box(&pretty_doc).write(WriteFlags::PRETTY).unwrap())
+    write_group.bench_function(BenchmarkId::new("vzjson", "mixed_400_pretty"), |b| {
+        b.iter(|| black_box(&pretty_vz).write(WriteFlags::PRETTY).unwrap())
     });
+    write_group.bench_function(BenchmarkId::new("serde_json_value", "mixed_400_pretty"), |b| {
+        b.iter(|| serde_json::to_vec_pretty(black_box(&pretty_serde)).unwrap())
+    });
+
     write_group.finish();
 }
 
-criterion_group!(benches, bench_vzjson);
+criterion_group!(benches, bench_vzjson_vs_serde);
 criterion_main!(benches);

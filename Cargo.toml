@@ -16,6 +16,7 @@ name = "vzjson"
 
 [dev-dependencies]
 criterion = "0.5"
+serde_json = "1"
 
 [[bench]]
 name = "json_bench"

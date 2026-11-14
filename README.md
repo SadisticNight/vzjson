@@ -64,19 +64,19 @@ Run the Criterion benchmark suite:
 cargo bench --bench json_bench
 ```
 
-Measured on Windows x86_64 (`opt-level = 3`, `lto = "fat"`, `codegen-units = 1`):
+Measured on Windows x86_64 (`opt-level = 3`, `lto = "fat"`, `codegen-units = 1`) comparing `vzjson::Doc` against `serde_json::Value`:
 
-| Benchmark | Mean Time | Throughput |
-| --- | ---: | ---: |
-| `vzjson_read/dense_numbers_20k` | 319.08 µs | 292.25 MiB/s |
-| `vzjson_read/long_strings_1000x256` | 128.88 µs | 1.87 GiB/s |
-| `vzjson_read/numbers_5000` | 119.28 µs | 559.62 MiB/s |
-| `vzjson_read/mixed_1000_records` | 361.98 µs | 469.73 MiB/s |
-| `vzjson_read/pretty_400_records` | 192.41 µs | 715.74 MiB/s |
-| `vzjson_write/dense_numbers_20k` | 171.96 µs | 542.27 MiB/s |
-| `vzjson_write/long_strings_1000x256` | 19.77 µs | 12.20 GiB/s |
-| `vzjson_write/mixed_1000_records` | 155.22 µs | 1.07 GiB/s |
-| `vzjson_write/mixed_400_pretty` | 112.62 µs | 1.19 GiB/s |
+| Operation / Workload | `vzjson` | `serde_json::Value` | Relative |
+| --- | ---: | ---: | ---: |
+| **Read** `mixed_1000_records` | 357.20 µs (`476.01 MiB/s`) | 1.0892 ms (`156.11 MiB/s`) | **3.05x faster** |
+| **Read** `pretty_400_records` | 169.14 µs (`814.19 MiB/s`) | 471.90 µs (`291.83 MiB/s`) | **2.79x faster** |
+| **Read** `dense_numbers_20k` | 327.06 µs (`285.12 MiB/s`) | 530.62 µs (`175.74 MiB/s`) | **1.62x faster** |
+| **Read** `long_strings_1000x256` | 146.02 µs (`1.65 GiB/s`) | 120.29 µs (`2.01 GiB/s`) | 0.82x |
+| **Read** `numbers_5000` | 125.42 µs (`532.23 MiB/s`) | 107.28 µs (`622.23 MiB/s`) | 0.86x |
+| **Write** `long_strings_1000x256` | 21.60 µs (`11.17 GiB/s`) | 86.38 µs (`2.79 GiB/s`) | **4.00x faster** |
+| **Write** `mixed_1000_records` | 146.63 µs (`1.13 GiB/s`) | 157.10 µs (`1.06 GiB/s`) | **1.07x faster** |
+| **Write** `mixed_400_pretty` | 109.21 µs (`1.23 GiB/s`) | 107.55 µs (`1.25 GiB/s`) | 0.98x |
+| **Write** `dense_numbers_20k` | 174.04 µs (`535.79 MiB/s`) | 104.28 µs (`894.26 MiB/s`) | 0.60x |
 
 ## Author
 
